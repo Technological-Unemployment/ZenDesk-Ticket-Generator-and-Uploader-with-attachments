@@ -32,33 +32,41 @@ def pdfAppend(str6, str7, str8):
 
 def QsearchT(name):
     # Qsearch TChart
-    connection = pg.connect(
-        dbname="your_dbname",
-        host="your_host",
-        port="5439",
-        user="username",
-        password="password",
-    )
-    df = pd.read_sql_query(
-        """Add your SQL Query with f string command to automatically generate trend charts by name;
-    """, con=connection)
-    connection.close() 
-    return df
-    
+    try:
+        connection = pg.connect(
+            dbname="your_dbname",
+            host="your_host",
+            port="5439",
+            user="username",
+            password="password",
+        )
+        query = f"""Add your SQL Query to automatically generate trend charts by name;
+                    WHERE name = '{name}'"""
+        df = pd.read_sql_query(query, con=connection)
+        connection.close() 
+        return df
+    except (Exception, pg.DatabaseError) as error:
+        print("Error while connecting to PostgreSQL database: ", error)
+        return None
+
 
 def QsearchD(name):
-    connection = pg.connect(
-         dbname="your_dbname",
-        host="your_host",
-        port="5439",
-        user="username",
-        password="password",
-    )
-    df2 = pd.read_sql_query(
-        """Add your SQL Query with f string command to automatically generate density charts by name;
-    """,con=connection)
-    connection.close()
-    return df2
+    try:
+        connection = pg.connect(
+             dbname="your_dbname",
+            host="your_host",
+            port="5439",
+            user="username",
+            password="password",
+        )
+        query = f"""Add your SQL Query to automatically generate density charts by name;
+                    WHERE name = '{name}'"""
+        df2 = pd.read_sql_query(query, con=connection)
+        connection.close()
+        return df2
+    except (Exception, pg.DatabaseError) as error:
+        print("Error while connecting to PostgreSQL database: ", error)
+        return None
     
     
 def get_concat_v_multi_resize(im_list, resample=Image.BICUBIC):
@@ -76,24 +84,38 @@ def get_concat_v_multi_resize(im_list, resample=Image.BICUBIC):
     return dst
 
 
-# Read in reference sheet if your customer names aren't identical in ZenDesk as in your SQL database
+import pandas as pd
+import datetime
+from matplotlib.backends.backend_pdf import PdfPages
+from zenpy import Zenpy
+
+# Read reference sheet
 ref = pd.read_csv(r"C:\\ComputerName\\ReferenceSheet.csv")
 
+# ZenDesk credentials
 creds1 = {
     "email": "your_email",
     "token": "your_ZenDesk_token",
     "subdomain": "your_customer_name_from_ZenDesk",
 }
 
-
+# Create Zenpy client
 zenpy_client = Zenpy(**creds1)
 
-yesterday = datetime.datetime.now() - datetime.timedelta(days=62)
-yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0) # Returns a copy
-today = datetime.datetime.now()
-today = today.replace(hour=23, minute=59, second=0, microsecond=0) # Returns a copy
+# Define date range
+def update_date_format(n):
+    now = datetime.datetime.now()
+    date_range = []
+    for i in range(n):
+        d = now - datetime.timedelta(days=i)
+        date_range.append(d.strftime('%Y-%m-%d'))
+    return date_range
+
+date_range = update_date_format(365)
+
+# Search for tickets
 for ticket in zenpy_client.search(
-    created_between=[yesterday, today],
+    created_between=[date_range[-1], date_range[0]],
     group="Data Analytics",
     type="ticket",
     status=['new', 'open'],
@@ -124,76 +146,6 @@ for ticket in zenpy_client.search(
 
             Last30 = df.tail(30)
             datelist = []
-            
-            
-            ## If your date format needs to be restructured for it print nicely on your charts
-            with PdfPages(r"C:\\Name_of_Folder\\" + str2 + str3, "r") as pdf:
-                for i in Last30["date1"]:
-                    elif i[4:6] == "01" and i[0:4] == "2020":
-                        update = i.replace("202001", "2020 \n Jan-")
-                        datelist.append(update)
-                    elif i[4:6] == "02" and i[0:4] == "2020":
-                        update = i.replace("202002", "2020 \n Feb-")
-                        datelist.append(update)
-                    elif i[4:6] == "03" and i[0:4] == "2020":
-                        update = i.replace("202003", "2020 \n Mar-")
-                        datelist.append(update)
-                    elif i[4:6] == "04" and i[0:4] == "2020":
-                        update = i.replace("202004", "2020 \n Apr-")
-                        datelist.append(update)
-                    elif i[4:6] == "05" and i[0:4] == "2020":
-                        update = i.replace("202005", "2020 \n May-")
-                        datelist.append(update)
-                    elif i[4:6] == "06" and i[0:4] == "2020":
-                        update = i.replace("202006", "2020 \n Jun-")
-                        datelist.append(update)
-                    elif i[4:6] == "07" and i[0:4] == "2020":
-                        update = i.replace("202007", "2020 \n Jul-")
-                        datelist.append(update)
-                    elif i[4:6] == "08" and i[0:4] == "2020":
-                        update = i.replace("202008", "2020 \n Aug-")
-                        datelist.append(update)
-                    elif i[4:6] == "09" and i[0:4] == "2020":
-                        update = i.replace("202009", "2020 \n Sep-")
-                        datelist.append(update)
-                    elif i[4:6] == "10" and i[0:4] == "2020":
-                        update = i.replace("202010", "2020 \n Oct-")
-                        datelist.append(update)
-                    elif i[4:6] == "11" and i[0:4] == "2020":
-                        update = i.replace("202011", "2020 \n Nov-")
-                        datelist.append(update)
-                    elif i[4:6] == "12" and i[0:4] == "2020":
-                        update = i.replace("202012", "2020 \n Dec-")
-                        datelist.append(update)
-                    else:
-                        update = i
-                        datelist.append(update)
-
-                Last30.loc[:, "newdate"] = datelist
-                #Last30['newdate'] = pd.Series(datelist, index=Last30.index)
-                for x in Last30.columns[4:-1]:
-                    SD = Last30[x].std()
-                    mean = Last30[x].mean()
-                    median = Last30[x].median()
-
-                    if x == 'variableA':
-                       USL = 7.0
-                       LSL = 'empty'
-                    elif x == 'variableB':
-                      USL = 5.9
-                      LSL = 'empty'
-                    elif x == 'height':
-                      USL = 5.9
-                      LSL = 'empty'
-                    elif x == 'side':
-                      USL = 5.9
-                      LSL = 'empty'
-                    elif x == 'variableC' or 'variableD':
-                       USL = 1
-                       LSL = 0
-                    else:
-                       USL = 1
-                       LSL = -1
 
                     fig, ax = plt.subplots(figsize=(13, 5))
                     a = np.nanmax(df.variableB); b = np.nanmax(df.variableC)
