@@ -1,0 +1,13 @@
+from zenpy import Zenpy
+from zenpy.lib.api_objects import Comment
+
+def create_zenpy_client():
+    creds1 = {
+        "email": "your_email",
+        "token": "your_ZenDesk_token",
+        "subdomain": "your_customer_name_from_ZenDesk",
+    }
+    return Zenpy(**creds1)
+
+def upload_to_zendesk(client, ticket_id, file_path):
+    # ... (the upload logic)
