@@ -1,13 +1,41 @@
+import os
 from zenpy import Zenpy
 from zenpy.lib.api_objects import Comment
 
 def create_zenpy_client():
-    creds1 = {
-        "email": "your_email",
-        "token": "your_ZenDesk_token",
-        "subdomain": "your_customer_name_from_ZenDesk",
+    """
+    Create a Zenpy client using credentials stored in environment variables.
+
+    Returns:
+        Zenpy: An authenticated Zenpy client instance.
+    """
+    creds = {
+        "email": os.getenv("ZENDESK_EMAIL"),
+        "token": os.getenv("ZENDESK_TOKEN"),
+        "subdomain": os.getenv("ZENDESK_SUBDOMAIN"),
     }
-    return Zenpy(**creds1)
+    return Zenpy(**creds)
 
 def upload_to_zendesk(client, ticket_id, file_path):
-    # ... (the upload logic)
+    """
+    Upload a file to a specific Zendesk ticket.
+
+    Args:
+        client (Zenpy): An authenticated Zenpy client instance.
+        ticket_id (int): The ID of the Zendesk ticket.
+        file_path (str): The path to the file that needs to be uploaded.
+
+    Raises:
+        Exception: If the file upload fails or the file path is invalid.
+    """
+    try:
+        with open(file_path, 'rb') as file:
+            client.tickets.update(
+                ticket=ticket_id,
+                comment=Comment(body="Here is the requested file.", uploads=[file])
+            )
+        print(f"File {file_path} uploaded successfully to ticket {ticket_id}.")
+    except FileNotFoundError:
+        print(f"File {file_path} not found.")
+    except Exception as e:
+        print(f"An error occurred while uploading the file: {e}")
