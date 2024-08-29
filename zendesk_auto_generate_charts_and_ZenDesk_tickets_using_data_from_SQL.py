@@ -1,271 +1,264 @@
-import psycopg2 as pg
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as datef
-from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.patches as patches
-import seaborn as sns
-from PyPDF2 import PdfFileMerger
-from zenpy.lib.api_objects import Comment
-from pdf2image import convert_from_path
-from pdf2image.exceptions import (
-    PDFInfoNotInstalledError,
-    PDFPageCountError,
-    PDFSyntaxError,
-)
 import os
 import tempfile
-from PIL import Image
 import datetime
-from zenpy import Zenpy
-import numpy as np
+import logging
 
-def pdfAppend(str6, str7, str8):
-    pdfs = [str6, str7]
-    merger = PdfFileMerger()
-    for pdf in pdfs:
-        merger.append(pdf)
-
-    merger.write(str8)
-    merger.close()
-
-
-def QsearchT(name):
-    # Qsearch TChart
-    try:
-        connection = pg.connect(
-            dbname="your_dbname",
-            host="your_host",
-            port="5439",
-            user="username",
-            password="password",
-        )
-        query = f"""Add your SQL Query to automatically generate trend charts by name;
-                    WHERE name = '{name}'"""
-        df = pd.read_sql_query(query, con=connection)
-        connection.close() 
-        return df
-    except (Exception, pg.DatabaseError) as error:
-        print("Error while connecting to PostgreSQL database: ", error)
-        return None
-
-
-def QsearchD(name):
-    try:
-        connection = pg.connect(
-             dbname="your_dbname",
-            host="your_host",
-            port="5439",
-            user="username",
-            password="password",
-        )
-        query = f"""Add your SQL Query to automatically generate density charts by name;
-                    WHERE name = '{name}'"""
-        df2 = pd.read_sql_query(query, con=connection)
-        connection.close()
-        return df2
-    except (Exception, pg.DatabaseError) as error:
-        print("Error while connecting to PostgreSQL database: ", error)
-        return None
-    
-    
-def get_concat_v_multi_resize(im_list, resample=Image.BICUBIC):
-    min_width = min(im.width for im in im_list)
-    im_list_resize = [
-        im.resize((min_width, int(im.height * min_width/ im.width)), resample=resample)
-        for im in im_list
-    ]
-    total_height = sum(im.height for im in im_list_resize)
-    dst = Image.new("RGB", (min_width, total_height))
-    pos_y = 0
-    for im in im_list_resize:
-        dst.paste(im, (0, pos_y))
-        pos_y += im.height
-    return dst
-
-
+import psycopg2 as pg
 import pandas as pd
-import datetime
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.patches as patches
+from PyPDF2 import PdfFileMerger
+from PIL import Image
+from pdf2image import convert_from_path
 from zenpy import Zenpy
+from zenpy.lib.api_objects import Comment
 
-# Read reference sheet
-ref = pd.read_csv(r"C:\\ComputerName\\ReferenceSheet.csv")
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# ZenDesk credentials
-creds1 = {
-    "email": "your_email",
-    "token": "your_ZenDesk_token",
-    "subdomain": "your_customer_name_from_ZenDesk",
-}
+# Environment variables for credentials
+ZENDESK_EMAIL = os.getenv("ZENDESK_EMAIL")
+ZENDESK_TOKEN = os.getenv("ZENDESK_TOKEN")
+ZENDESK_SUBDOMAIN = os.getenv("ZENDESK_SUBDOMAIN")
+
+# Database credentials
+DB_NAME = os.getenv("DB_NAME")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 # Create Zenpy client
-zenpy_client = Zenpy(**creds1)
+zenpy_client = Zenpy(email=ZENDESK_EMAIL, token=ZENDESK_TOKEN, subdomain=ZENDESK_SUBDOMAIN)
 
-# Define date range
-def update_date_format(n):
-    now = datetime.datetime.now()
-    date_range = []
-    for i in range(n):
-        d = now - datetime.timedelta(days=i)
-        date_range.append(d.strftime('%Y-%m-%d'))
-    return date_range
 
-date_range = update_date_format(365)
+def get_db_connection():
+    """
+    Establishes a connection to the PostgreSQL database using environment variables.
+    """
+    return pg.connect(
+        dbname=DB_NAME,
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD,
+    )
 
-# Search for tickets
-for ticket in zenpy_client.search(
-    created_between=[date_range[-1], date_range[0]],
-    group="Data Analytics",
-    type="ticket",
-    status=['new', 'open'],
-    minus='negated'
-):
-    print(ticket)
-    print(ticket.custom_fields[5])
-    # using custom field 5 to find SQL name for each generated ticket location
-    forName = str(ticket.custom_fields[5])
-    Name = forName[27 : len(forName) - 2]
-    for i in range(len(ref)):
-        if Name == ref.iloc[i, 1]:
-            SQLnameOG = str(ref.iloc[i, 0])
-            name = "'" + SQLnameOG + "'"
-            SQLname = SQLnameOG.replace(" ", "")
-            SQLname = SQLname.replace("-", "")
-            print(SQLname)
-            print(" ")
-            str1 = "C:\\Name_of_Folder\\"
-            str2 = SQLname + "T"
-            str4 = SQLname + "D"
-            str5 = SQLname
-            str3 = ".pdf"
 
-            # Qsearch TChart and creation
-            df = QsearchT(name)
-            df.fillna(0, inplace=True)
+def query_data(name, query_template):
+    """
+    Executes a query against the PostgreSQL database.
 
-            Last30 = df.tail(30)
-            datelist = []
+    Args:
+        name (str): The name to filter the query on.
+        query_template (str): The SQL query template to execute.
 
-                    fig, ax = plt.subplots(figsize=(13, 5))
-                    a = np.nanmax(df.variableB); b = np.nanmax(df.variableC)
-                    c = max(a,b) + 2.0
-                    d = np.nanmax(df.variableA) + 2.0
-                    
-                    if x == 'variableA':
-                       plt.ylim(0, d)    
-                    if x == 'variableB' or x == 'variableC':
-                       plt.ylim(0, c)
-                    if x == 'zs':
-                       plt.ylim(-1.0, 1)
+    Returns:
+        pd.DataFrame: DataFrame with the query results.
+    """
+    try:
+        with get_db_connection() as connection:
+            query = query_template.format(name=name)
+            df = pd.read_sql_query(query, con=connection)
+        return df
+    except (pg.DatabaseError, Exception) as error:
+        logger.error(f"Error while querying the database: {error}")
+        return None
 
-                    ax.plot(Last30.newdate, Last30[x], "o-")
-                    plt.grid(axis="y")
-                    plt.xticks(Last30.newdate, rotation=0)
-                    plt.gca().margins(x=0)
-                    plt.gcf().canvas.draw()
-                    tl = plt.gca().get_xticklabels()
-                    maxsize = max([t.get_window_extent().width for t in tl])
-                    m = 0.5  # inch margin
-                    s = maxsize / plt.gcf().dpi * (len(Last30.index)) + 2 * m
-                    margin = m / plt.gcf().get_size_inches()[0]
 
-                    plt.gcf().subplots_adjust(left=margin, right= 1.0 -margin) #
-                    plt.gcf().set_size_inches(s, plt.gcf().get_size_inches()[1])
-                    
-                    if x == 'variableB' or x == 'variableC' or x == 'variableA':
-                       plt.axhline(y=median, linestyle='-.', color='orange', label='median')
-                    else:
-                       plt.axhline(y=mean, linestyle='--', color='g', label='mean')
-                       
+def create_trend_chart(df, variable, save_path):
+    """
+    Creates and saves a trend chart as a PDF.
 
-                    plt.axhline(y=USL, color="k", label="USL")
+    Args:
+        df (pd.DataFrame): DataFrame containing the data to plot.
+        variable (str): The column name to plot.
+        save_path (str): The path where the PDF will be saved.
+    """
+    fig, ax = plt.subplots(figsize=(13, 5))
+    ax.plot(df['newdate'], df[variable], "o-")
+    plt.grid(axis="y")
+    plt.xticks(df['newdate'], rotation=0)
+    plt.title(f"{df.iloc[0, 0]} - {variable} Chart", fontsize=16)
+    plt.ylabel(f"Average {variable} per Event", fontsize=15)
+    plt.axhline(y=df[variable].median(), linestyle='-.', color='orange', label='Median')
+    plt.legend(loc="best", facecolor="white", frameon=True)
+    plt.savefig(save_path)
+    plt.close()
+    logger.info(f"Trend chart saved to {save_path}")
 
-                    if LSL == "empty":
-                        LSL = "skip"
-                    else:
-                        plt.axhline(y=LSL, color="k", label="LSL")
-                    plt.suptitle(str(Last30.iloc[0, 0]) + " - " + x + " Chart",fontsize=16,)
-                    plt.ylabel("Average " + x + " per Event", fontsize=15)
-                    plt.legend(loc="best", facecolor="white", frameon=True)
-                    pdf.savefig()
-                    plt.close()
 
-            # Qsearch Density plots and creation
-            df2 = QsearchD(name)
-            df2.fillna(0, inplace=True)
-            with PdfPages(r"C:\\Name_of_Folder\\" + str4 + str3, "r") as pdf:
-                CalledK = df2.loc[df2["feature"] == "Another name of feature"]
-                sns.set_style("whitegrid")
-                rect = patches.Rectangle(
-                    (-1, 1.5), 2, 2, linewidth=1, edgecolor="k", facecolor="none"
-                )
-                zone = sns.jointplot(
-                    x=CalledK["side"],
-                    y=CalledK["height"],
-                    kind="kde",
-                    color="red",
-                    shade_lowest=False,
-                )
-                zone.ax_joint.add_patch(rect)
-                zone.ax_joint.set_xlim(-2, 2)
-                zone.ax_joint.set_ylim(1, 4)
-                plt.title(str(df2.iloc[0, 0]) + " - " +"Density Plot Title - 2020\n\n\n\n",fontsize=10,loc="right",)
-                pdf.savefig()
-                plt.close()
+def create_density_plot(df, save_path):
+    """
+    Creates and saves a density plot as a PDF.
 
-            # Automating the filepaths
-            str6 = str1 + str2 + str3
+    Args:
+        df (pd.DataFrame): DataFrame containing the data to plot.
+        save_path (str): The path where the PDF will be saved.
+    """
+    with PdfPages(save_path) as pdf:
+        sns.set_style("whitegrid")
+        rect = patches.Rectangle(
+            (-1, 1.5), 2, 2, linewidth=1, edgecolor="k", facecolor="none"
+        )
+        zone = sns.jointplot(
+            x=df["side"],
+            y=df["height"],
+            kind="kde",
+            color="red",
+            shade_lowest=False,
+        )
+        zone.ax_joint.add_patch(rect)
+        zone.ax_joint.set_xlim(-2, 2)
+        zone.ax_joint.set_ylim(1, 4)
+        plt.title(f"{df.iloc[0, 0]} - Density Plot Title - 2020", fontsize=10, loc="right")
+        pdf.savefig()
+        plt.close()
+    logger.info(f"Density plot saved to {save_path}")
 
-            str7 = str1 + str4 + str3
 
-            str8 = str1 + str5 + str3
-            pdfAppend(str6, str7, str8)
+def append_pdfs(input_pdfs, output_pdf):
+    """
+    Merges multiple PDFs into a single PDF.
 
-            # Pdf to PNG (Each page to separate PNG)
-            filename = str8
-            images = convert_from_path(filename)
+    Args:
+        input_pdfs (list of str): List of file paths to the PDFs to merge.
+        output_pdf (str): The file path for the merged PDF.
+    """
+    merger = PdfFileMerger()
+    for pdf in input_pdfs:
+        merger.append(pdf)
+    merger.write(output_pdf)
+    merger.close()
+    logger.info(f"PDFs merged into {output_pdf}")
 
-            temp_list = []
-            for i, image in enumerate(images):
-                fP = str1 + str2 + str(i) + "out.png"
-                image.save(fP, "PNG")
-                temp_list.append(r"C:\\Name_of_Folder\\" + str2 + str(i) + "out.png")
 
-            # Concatenate all PNG files to one
-            im0 = Image.open(temp_list[0])
-            im1 = Image.open(temp_list[1])
-            im2 = Image.open(temp_list[2])
-            im3 = Image.open(temp_list[3])
-            im4 = Image.open(temp_list[4])
-            im5 = Image.open(temp_list[5])
-            im6 = Image.open(temp_list[6])
-            im7 = Image.open(temp_list[7])
-            im8 = Image.open(temp_list[8])
-            im9 = Image.open(temp_list[9])
-            im10 = Image.open(temp_list[10])
+def convert_pdf_to_png(pdf_path, output_dir):
+    """
+    Converts each page of a PDF to a separate PNG file.
 
-            fP = str1 + str5 + "out.png"
-            get_concat_v_multi_resize([im0, im1, im2, im3, im4, im5, im6, im7, im8, im9, im10]).save(fP, "PNG")
+    Args:
+        pdf_path (str): The path to the PDF file.
+        output_dir (str): The directory where PNG files will be saved.
 
-            # Extra PDF and PNG deletion
-            for i in range(0, 10):
-                os.remove(temp_list[i])
+    Returns:
+        list of str: List of file paths to the generated PNG files.
+    """
+    images = convert_from_path(pdf_path)
+    image_paths = []
+    for i, image in enumerate(images):
+        image_path = os.path.join(output_dir, f"{i}_out.png")
+        image.save(image_path, "PNG")
+        image_paths.append(image_path)
+    logger.info(f"Converted {pdf_path} to PNG images.")
+    return image_paths
 
-            os.remove(str6)
-            os.remove(str7)
-            os.remove(str8)
 
-            # Upload to Zenpy Ticket
-            tname = str5 + "out.png"
-            upload_comb = zenpy_client.attachments.upload(
-                "C:/Quality/" + str5 + "out.png"
-            )
-            ticket = zenpy_client.tickets(id=ticket.id)
-            ticket.comment = Comment(
-                body="Uploaded Trend Charts and Density Plots",
-                public=False,
-                uploads=[upload_comb.token],
-            )
-            zenpy_client.tickets.update(ticket)
-            break
+def concatenate_images_vertically(image_paths, save_path):
+    """
+    Concatenates multiple images vertically into a single image.
+
+    Args:
+        image_paths (list of str): List of file paths to the images to concatenate.
+        save_path (str): The file path for the concatenated image.
+    """
+    images = [Image.open(img_path) for img_path in image_paths]
+    min_width = min(im.width for im in images)
+    resized_images = [
+        im.resize((min_width, int(im.height * min_width / im.width)), resample=Image.BICUBIC)
+        for im in images
+    ]
+    total_height = sum(im.height for im in resized_images)
+    concatenated_image = Image.new("RGB", (min_width, total_height))
+
+    y_offset = 0
+    for im in resized_images:
+        concatenated_image.paste(im, (0, y_offset))
+        y_offset += im.height
+
+    concatenated_image.save(save_path, "PNG")
+    logger.info(f"Images concatenated and saved to {save_path}")
+
+
+def upload_file_to_zendesk(ticket_id, file_path):
+    """
+    Uploads a file to a ZenDesk ticket.
+
+    Args:
+        ticket_id (int): The ID of the ZenDesk ticket.
+        file_path (str): The path to the file to upload.
+    """
+    upload = zenpy_client.attachments.upload(file_path)
+    ticket = zenpy_client.tickets(id=ticket_id)
+    ticket.comment = Comment(
+        body="Uploaded Trend Charts and Density Plots",
+        public=False,
+        uploads=[upload.token],
+    )
+    zenpy_client.tickets.update(ticket)
+    logger.info(f"Uploaded {file_path} to ZenDesk ticket {ticket_id}")
+
+
+def main():
+    # Read reference sheet
+    ref = pd.read_csv(r"C:\\ComputerName\\ReferenceSheet.csv")
+
+    # Define date range (last 365 days)
+    date_range = [(datetime.datetime.now() - datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(365)]
+
+    # Search for ZenDesk tickets
+    for ticket in zenpy_client.search(
+        created_between=[date_range[-1], date_range[0]],
+        group="Data Analytics",
+        type="ticket",
+        status=['new', 'open'],
+        minus='negated'
+    ):
+        logger.info(f"Processing ticket {ticket.id}")
+        forName = str(ticket.custom_fields[5])
+        Name = forName[27: len(forName) - 2]
+
+        SQLnameOG = ref.loc[ref.iloc[:, 1] == Name, ref.columns[0]].values[0]
+        name = f"'{SQLnameOG}'"
+        SQLname = SQLnameOG.replace(" ", "").replace("-", "")
+
+        output_dir = os.path.join("C:\\Name_of_Folder")
+        trend_pdf = os.path.join(output_dir, f"{SQLname}T.pdf")
+        density_pdf = os.path.join(output_dir, f"{SQLname}D.pdf")
+        merged_pdf = os.path.join(output_dir, f"{SQLname}.pdf")
+
+        # Qsearch TChart
+        df_trend = query_data(name, "YOUR TREND SQL QUERY HERE")
+        if df_trend is not None:
+            df_trend.fillna(0, inplace=True)
+            create_trend_chart(df_trend.tail(30), 'variableA', trend_pdf)
+
+        # Qsearch Density plots
+        df_density = query_data(name, "YOUR DENSITY SQL QUERY HERE")
+        if df_density is not None:
+            df_density.fillna(0, inplace=True)
+            create_density_plot(df_density, density_pdf)
+
+        # Merge PDFs
+        append_pdfs([trend_pdf, density_pdf], merged_pdf)
+
+        # Convert merged PDF to PNGs
+        image_paths = convert_pdf_to_png(merged_pdf, output_dir)
+
+        # Concatenate images
+        final_image_path = os.path.join(output_dir, f"{SQLname}out.png")
+        concatenate_images_vertically(image_paths, final_image_path)
+
+        # Clean up intermediate files
+        for file_path in [trend_pdf, density_pdf, merged_pdf] + image_paths:
+            os.remove(file_path)
+
+        # Upload to ZenDesk
+        upload_file_to_zendesk(ticket.id, final_image_path)
+
+if __name__ == "__main__":
+    main()
