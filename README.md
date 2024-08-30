@@ -1,4 +1,4 @@
-#  Ticket Generator and Uploader with attachments
+#ZenDesk Ticket Generator and Uploader with attachments
  Using SQL generate charts and create tickets and upload charts in ZenDesk by customer name.
  
 Before you start go into ZenDesk to generate your token and make sure your domain is correct and your email associated with ZenDesk has read/write access.
